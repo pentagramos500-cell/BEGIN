@@ -1,0 +1,207 @@
+
+-- WILL BE USED FOR [MAIN.LUA]
+
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local SoundService = game:GetService("SoundService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+
+local Assets = {
+    Sounds = {
+        Click = "rbxassetid://6895079853",
+        Hover = "rbxassetid://6895079775",
+        Notification = "rbxassetid://4590662766",
+        Success = "rbxassetid://6895079853",
+        Error = "rbxassetid://4590657391",
+        Whoosh = "rbxassetid://1177785010",
+        PowerUp = "rbxassetid://5153734944"
+    }
+}
+
+local FX = {
+    audioEnabled = true,
+    hapticEnabled = true,
+    particlesEnabled = true
+}
+
+function FX:Sound(id, vol, pitch)
+    if not self.audioEnabled then return end
+    task.spawn(function()
+        local s = Instance.new("Sound")
+        s.SoundId = id
+        s.Volume = vol or 0.5
+        s.PlaybackSpeed = pitch or 1
+        s.Parent = SoundService
+        s:Play()
+        s.Ended:Wait()
+        s:Destroy()
+    end)
+end
+
+function FX:Haptic(type)
+    if not self.hapticEnabled then return end
+    task.spawn(function()
+        pcall(function()
+            local h = Instance.new("HapticEffect")
+            h.Type = type == "heavy"
+                and Enum.HapticEffectType.GameplayExplosion
+                or Enum.HapticEffectType.Collision
+            h.Parent = Workspace
+            h:Play()
+            task.wait(0.1)
+            h:Destroy()
+        end)
+    end)
+end
+
+function FX:Click()
+    self:Sound(Assets.Sounds.Click, 0.4, 1)
+end
+
+function FX:Hover()
+    self:Sound(Assets.Sounds.Hover, 0.25, 1.3)
+end
+
+function FX:Success()
+    self:Sound(Assets.Sounds.Success, 0.6, 1.1)
+end
+
+function FX:Notify()
+    self:Sound(Assets.Sounds.Notification, 0.5, 1)
+end
+
+local Style = {}
+
+function Style:Accent(text)
+    return "<b><font color='#ff91af'>" .. text .. "</font></b>"
+end
+
+local NebulaStorm = {
+    TextColor = Color3.fromRGB(245, 240, 255),
+    PlaceholderColor = Color3.fromRGB(135, 125, 155),
+    Background = Color3.fromRGB(10, 8, 18),
+    Topbar = Color3.fromRGB(16, 13, 28),
+    Shadow = Color3.fromRGB(4, 2, 8),
+    NotificationBackground = Color3.fromRGB(18, 15, 30),
+    NotificationActionsBackground = Color3.fromRGB(26, 22, 40),
+    TabBackground = Color3.fromRGB(22, 18, 35),
+    TabStroke = Color3.fromRGB(55, 45, 75),
+    TabBackgroundSelected = Color3.fromRGB(255, 145, 175),
+    TabTextColor = Color3.fromRGB(245, 240, 255),
+    SelectedTabTextColor = Color3.fromRGB(10, 8, 18),
+    ElementBackground = Color3.fromRGB(18, 15, 30),
+    ElementBackgroundHover = Color3.fromRGB(30, 25, 45),
+    SecondaryElementBackground = Color3.fromRGB(14, 11, 24),
+    ElementStroke = Color3.fromRGB(65, 55, 90),
+    SecondaryElementStroke = Color3.fromRGB(50, 40, 70),
+    SliderBackground = Color3.fromRGB(28, 24, 42),
+    SliderProgress = Color3.fromRGB(255, 145, 175),
+    SliderStroke = Color3.fromRGB(75, 65, 100),
+    ToggleBackground = Color3.fromRGB(18, 15, 30),
+    ToggleEnabled = Color3.fromRGB(255, 145, 175),
+    ToggleDisabled = Color3.fromRGB(55, 45, 70),
+    ToggleEnabledStroke = Color3.fromRGB(255, 165, 195),
+    ToggleDisabledStroke = Color3.fromRGB(40, 30, 55),
+    ToggleEnabledOuterStroke = Color3.fromRGB(75, 65, 95),
+    ToggleDisabledOuterStroke = Color3.fromRGB(32, 22, 48),
+    DropdownSelected = Color3.fromRGB(32, 27, 48),
+    DropdownUnselected = Color3.fromRGB(18, 15, 30),
+    InputBackground = Color3.fromRGB(18, 15, 30),
+    InputStroke = Color3.fromRGB(65, 55, 90)
+}
+
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
+task.spawn(function()
+    while task.wait(0.5) do
+        local gui = CoreGui:FindFirstChild("Rayfield")
+        if not gui then continue end
+        for _, v in pairs(gui:GetDescendants()) do
+            if (v:IsA("TextLabel") or v:IsA("TextButton")) then
+                v.RichText = true
+            end
+            if v:IsA("TextButton") and not v:GetAttribute("Enhanced") then
+                v:SetAttribute("Enhanced", true)
+                v.MouseEnter:Connect(function()
+                    FX:Hover()
+                    TweenService:Create(v, TweenInfo.new(0.2), {
+                        BackgroundColor3 = NebulaStorm.ElementBackgroundHover
+                    }):Play()
+                end)
+                v.MouseLeave:Connect(function()
+                    TweenService:Create(v, TweenInfo.new(0.2), {
+                        BackgroundColor3 = NebulaStorm.ElementBackground
+                    }):Play()
+                end)
+                v.MouseButton1Down:Connect(function()
+                    TweenService:Create(v, TweenInfo.new(0.1), {
+                        Size = v.Size * 0.97
+                    }):Play()
+                end)
+                v.MouseButton1Up:Connect(function()
+                    TweenService:Create(v, TweenInfo.new(0.1), {
+                        Size = v.Size / 0.97
+                    }):Play()
+                end)
+            end
+        end
+    end
+end)
+
+local oldNotify = Rayfield.Notify
+Rayfield.Notify = function(self, opts)
+    FX:Notify()
+    return oldNotify(self, {
+        Title = tostring(opts.Title or ""),
+        Content = tostring(opts.Content or ""),
+        Duration = opts.Duration or 3,
+        Image = opts.Image
+    })
+end
+
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        FX:Click()
+    end
+end)
+
+local Window = Rayfield:CreateWindow({
+    Name = "Casual Comas",
+    LoadingTitle = "Casual Comas",
+    LoadingSubtitle = "Nebula Storm UI",
+    Icon = "cloud-lightning",
+    Theme = NebulaStorm,
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "CasualComasPremium",
+        FileName = "Config"
+    },
+    KeySystem = false,
+    DisableRayfieldPrompts = true
+})
+
+local Home = Window:CreateTab("Nexus", "zap")
+
+Home:CreateButton({
+    Name = "Test Notification",
+    Callback = function()
+        Rayfield:Notify({
+            Title = "Premium Effects",
+            Content = "Check out the audio system working!",
+            Image = "check-circle"
+        })
+    end
+})
+
+task.wait(0.3)
+FX:Sound(Assets.Sounds.PowerUp, 0.7, 1)
+
+Rayfield:Notify({
+    Title = "Casual Comas",
+    Content = "Nebula Storm theme test",
+    Image = "cloud-lightning",
+    Duration = 4
+})
