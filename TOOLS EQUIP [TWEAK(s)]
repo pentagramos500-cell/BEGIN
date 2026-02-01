@@ -1,0 +1,55 @@
+-- This is an unfinished feature that needs tweaks to transform it to an effective feature [C&C]
+
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+
+local DEPTH = -10
+local HEIGHT = 2
+local FLOAT_SPEED = 2
+local ROTATION_SPEED = 1.5
+local ORBIT_RADIUS = 3
+
+local activeConnections = {}
+
+local function animateTool(tool)
+    if not tool:IsA("Tool") then return end
+
+    local startTime = tick()
+
+    activeConnections[tool] = RunService.RenderStepped:Connect(function()
+        if not tool.Parent then
+            activeConnections[tool]:Disconnect()
+            activeConnections[tool] = nil
+            return
+        end
+
+        local t = tick() - startTime
+        local yOffset = math.sin(t * FLOAT_SPEED) * HEIGHT
+        local angle = t * ROTATION_SPEED
+
+        tool.Grip =
+            CFrame.new(
+                math.cos(angle) * ORBIT_RADIUS,
+                DEPTH + yOffset,
+                math.sin(angle) * ORBIT_RADIUS
+            )
+            * CFrame.Angles(0, angle, 0)
+    end)
+end
+
+local function onCharacter(character)
+    character.ChildAdded:Connect(animateTool)
+
+    for _, child in ipairs(character:GetChildren()) do
+        animateTool(child)
+    end
+end
+
+if player.Character then
+    onCharacter(player.Character)
+end
+
+player.CharacterAdded:Connect(onCharacter)
