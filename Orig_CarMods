@@ -1,0 +1,355 @@
+local Env = getgenv().PL_Hub
+if not Env then return warn("Load main hub first!") end
+
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Vehicle configuration
+if not Env.cfg.vehicle then
+    Env.cfg.vehicle = {
+        enabled = false,
+        maxSpeed = 100,
+        turnSpeed = 2,
+        torque = 100,
+        steerFloat = 1,
+        fly = false,
+        flySpeed = 1,
+    }
+end
+
+-- Vehicle references
+local currentVehicle = nil
+local originalVehicleStats = {}
+local vehicleConnection = nil
+local FLYING = false
+local flyKeyDown = nil
+local flyKeyUp = nil
+local flyLoop = nil
+local BG = nil
+local BV = nil
+
+-- Mobile detection
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+-- Find vehicle seat
+local function findVehicle()
+    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    if humanoid and humanoid.SeatPart and humanoid.SeatPart:IsA("VehicleSeat") then
+        return humanoid.SeatPart
+    end
+    return nil
+end
+
+-- Get root part of vehicle
+local function getVehicleRoot()
+    if not currentVehicle then return nil end
+    local vehicleModel = currentVehicle.Parent
+    if not vehicleModel then return nil end
+    return vehicleModel.PrimaryPart or vehicleModel:FindFirstChild("Main") or vehicleModel:FindFirstChild("Body") or currentVehicle
+end
+
+-- Apply vehicle modifications
+local function applyVehicleMods(vehicle)
+    if not vehicle or not Env.cfg.vehicle.enabled then return end
+    
+    if not originalVehicleStats[vehicle] then
+        originalVehicleStats[vehicle] = {
+            MaxSpeed = vehicle.MaxSpeed,
+            TurnSpeed = vehicle.TurnSpeed,
+            Torque = vehicle.Torque,
+            Steer = vehicle.Steer
+        }
+    end
+    
+    vehicle.MaxSpeed = Env.cfg.vehicle.maxSpeed
+    vehicle.TurnSpeed = Env.cfg.vehicle.turnSpeed
+    vehicle.Torque = Env.cfg.vehicle.torque
+    vehicle.Steer = Env.cfg.vehicle.steerFloat
+end
+
+-- Stop fly
+local function stopVehicleFly()
+    print("[VFly] Stopping...")
+    FLYING = false
+    
+    -- Disconnect fly loop
+    if flyLoop then
+        flyLoop:Disconnect()
+        flyLoop = nil
+    end
+    
+    -- Disconnect input handlers
+    if flyKeyDown then
+        flyKeyDown:Disconnect()
+        flyKeyDown = nil
+    end
+    if flyKeyUp then
+        flyKeyUp:Disconnect()
+        flyKeyUp = nil
+    end
+    
+    -- Destroy BodyMovers
+    if BG then
+        BG:Destroy()
+        BG = nil
+    end
+    if BV then
+        BV:Destroy()
+        BV = nil
+    end
+    
+    -- Remove mobile UI
+    local gui = LocalPlayer.PlayerGui:FindFirstChild("VehicleFlyMobileUI")
+    if gui then gui:Destroy() end
+    
+    pcall(function()
+        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+    end)
+end
+
+-- Vehicle Fly (Infinite Yield style)
+local function startVehicleFly()
+    print("[VFly] Starting...")
+    
+    local T = getVehicleRoot()
+    if not T then 
+        warn("[VFly] No root found!")
+        return 
+    end
+    
+    print("[VFly] Using:", T.Name)
+    
+    -- Stop existing fly
+    stopVehicleFly()
+    
+    local CONTROL = {F = 0, B = 0, L = 0, R = 0, Q = 0, E = 0}
+    local lCONTROL = {F = 0, B = 0, L = 0, R = 0, Q = 0, E = 0}
+    local SPEED = 0
+    
+    FLYING = true
+    BG = Instance.new('BodyGyro')
+    BV = Instance.new('BodyVelocity')
+    BG.P = 9e4
+    BG.Parent = T
+    BV.Parent = T
+    BG.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+    BG.cframe = T.CFrame
+    BV.velocity = Vector3.new(0, 0, 0)
+    BV.maxForce = Vector3.new(9e9, 9e9, 9e9)
+    
+    -- Fly loop
+    flyLoop = RunService.Heartbeat:Connect(function()
+        if not FLYING or not Env.cfg.vehicle.fly or not T.Parent then
+            stopVehicleFly()
+            return
+        end
+        
+        if CONTROL.L + CONTROL.R ~= 0 or CONTROL.F + CONTROL.B ~= 0 or CONTROL.Q + CONTROL.E ~= 0 then
+            SPEED = 50
+        elseif not (CONTROL.L + CONTROL.R ~= 0 or CONTROL.F + CONTROL.B ~= 0 or CONTROL.Q + CONTROL.E ~= 0) and SPEED ~= 0 then
+            SPEED = 0
+        end
+        
+        if (CONTROL.L + CONTROL.R) ~= 0 or (CONTROL.F + CONTROL.B) ~= 0 or (CONTROL.Q + CONTROL.E) ~= 0 then
+            BV.velocity = ((workspace.CurrentCamera.CoordinateFrame.lookVector * (CONTROL.F + CONTROL.B)) + ((workspace.CurrentCamera.CoordinateFrame * CFrame.new(CONTROL.L + CONTROL.R, (CONTROL.F + CONTROL.B + CONTROL.Q + CONTROL.E) * 0.2, 0).p) - workspace.CurrentCamera.CoordinateFrame.p)) * SPEED
+            lCONTROL = {F = CONTROL.F, B = CONTROL.B, L = CONTROL.L, R = CONTROL.R}
+        elseif (CONTROL.L + CONTROL.R) == 0 and (CONTROL.F + CONTROL.B) == 0 and (CONTROL.Q + CONTROL.E) == 0 and SPEED ~= 0 then
+            BV.velocity = ((workspace.CurrentCamera.CoordinateFrame.lookVector * (lCONTROL.F + lCONTROL.B)) + ((workspace.CurrentCamera.CoordinateFrame * CFrame.new(lCONTROL.L + lCONTROL.R, (lCONTROL.F + lCONTROL.B + CONTROL.Q + CONTROL.E) * 0.2, 0).p) - workspace.CurrentCamera.CoordinateFrame.p)) * SPEED
+        else
+            BV.velocity = Vector3.new(0, 0, 0)
+        end
+        
+        BG.cframe = workspace.CurrentCamera.CoordinateFrame
+    end)
+    
+    -- Keyboard controls
+    flyKeyDown = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        local KEY = input.KeyCode
+        
+        if KEY == Enum.KeyCode.W then
+            CONTROL.F = Env.cfg.vehicle.flySpeed
+        elseif KEY == Enum.KeyCode.S then
+            CONTROL.B = -Env.cfg.vehicle.flySpeed
+        elseif KEY == Enum.KeyCode.A then
+            CONTROL.L = -Env.cfg.vehicle.flySpeed
+        elseif KEY == Enum.KeyCode.D then
+            CONTROL.R = Env.cfg.vehicle.flySpeed
+        elseif KEY == Enum.KeyCode.E then
+            CONTROL.Q = Env.cfg.vehicle.flySpeed * 2
+        elseif KEY == Enum.KeyCode.Q then
+            CONTROL.E = -Env.cfg.vehicle.flySpeed * 2
+        end
+    end)
+    
+    flyKeyUp = UserInputService.InputEnded:Connect(function(input)
+        local KEY = input.KeyCode
+        
+        if KEY == Enum.KeyCode.W then
+            CONTROL.F = 0
+        elseif KEY == Enum.KeyCode.S then
+            CONTROL.B = 0
+        elseif KEY == Enum.KeyCode.A then
+            CONTROL.L = 0
+        elseif KEY == Enum.KeyCode.D then
+            CONTROL.R = 0
+        elseif KEY == Enum.KeyCode.E then
+            CONTROL.Q = 0
+        elseif KEY == Enum.KeyCode.Q then
+            CONTROL.E = 0
+        end
+    end)
+    
+    -- Mobile joystick support
+    if isMobile then
+        local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+        if humanoid then
+            task.spawn(function()
+                while FLYING do
+                    local moveVector = humanoid.MoveVector
+                    
+                    -- Convert joystick input to fly controls
+                    CONTROL.F = moveVector.Z < 0 and (-moveVector.Z * Env.cfg.vehicle.flySpeed) or 0
+                    CONTROL.B = moveVector.Z > 0 and (-moveVector.Z * Env.cfg.vehicle.flySpeed) or 0
+                    CONTROL.L = moveVector.X < 0 and (moveVector.X * Env.cfg.vehicle.flySpeed) or 0
+                    CONTROL.R = moveVector.X > 0 and (moveVector.X * Env.cfg.vehicle.flySpeed) or 0
+                    
+                    task.wait(0.05)
+                end
+            end)
+        end
+        
+        -- Create mobile up/down buttons
+        local screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "VehicleFlyMobileUI"
+        screenGui.ResetOnSpawn = false
+        screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        screenGui.Parent = LocalPlayer.PlayerGui
+        
+        local function createButton(name, position, text)
+            local btn = Instance.new("TextButton")
+            btn.Name = name
+            btn.Size = UDim2.new(0, 70, 0, 70)
+            btn.Position = position
+            btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            btn.BackgroundTransparency = 0.3
+            btn.Text = text
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            btn.TextSize = 24
+            btn.Font = Enum.Font.GothamBold
+            btn.ZIndex = 300
+            btn.Parent = screenGui
+            
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 12)
+            corner.Parent = btn
+            
+            return btn
+        end
+        
+        local upBtn = createButton("Up", UDim2.new(1, -85, 1, -230), "▲")
+        local downBtn = createButton("Down", UDim2.new(1, -85, 1, -150), "▼")
+        
+        upBtn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                CONTROL.Q = Env.cfg.vehicle.flySpeed * 2
+                upBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+            end
+        end)
+        
+        upBtn.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                CONTROL.Q = 0
+                upBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            end
+        end)
+        
+        downBtn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                CONTROL.E = -Env.cfg.vehicle.flySpeed * 2
+                downBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+            end
+        end)
+        
+        downBtn.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                CONTROL.E = 0
+                downBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            end
+        end)
+    end
+    
+    print("[VFly] Started successfully!")
+end
+
+-- Stop vehicle monitoring
+local function stopVehicleMonitoring()
+    if vehicleConnection then
+        vehicleConnection:Disconnect()
+        vehicleConnection = nil
+    end
+    
+    stopVehicleFly()
+    
+    if currentVehicle and originalVehicleStats[currentVehicle] then
+        local stats = originalVehicleStats[currentVehicle]
+        pcall(function()
+            currentVehicle.MaxSpeed = stats.MaxSpeed
+            currentVehicle.TurnSpeed = stats.TurnSpeed
+            currentVehicle.Torque = stats.Torque
+            currentVehicle.Steer = stats.Steer
+        end)
+    end
+    
+    currentVehicle = nil
+end
+
+-- Monitor vehicle state
+local function startVehicleMonitoring()
+    if vehicleConnection then
+        vehicleConnection:Disconnect()
+    end
+    
+    vehicleConnection = RunService.Heartbeat:Connect(function()
+        local vehicle = findVehicle()
+        
+        if vehicle ~= currentVehicle then
+            currentVehicle = vehicle
+            if vehicle then
+                applyVehicleMods(vehicle)
+                if Env.cfg.vehicle.fly then
+                    task.wait(0.1)
+                    startVehicleFly()
+                end
+            else
+                stopVehicleFly()
+            end
+        end
+        
+        if currentVehicle then
+            applyVehicleMods(currentVehicle)
+        end
+    end)
+end
+
+-- Handle character respawn
+LocalPlayer.CharacterAdded:Connect(function(char)
+    if Env.cfg.vehicle and Env.cfg.vehicle.enabled then
+        task.wait(1)
+        startVehicleMonitoring()
+    end
+end)
+
+-- Start monitoring if enabled
+if Env.cfg.vehicle and Env.cfg.vehicle.enabled then
+    startVehicleMonitoring()
+end
+
+-- Export functions to global environment
+getgenv().startVehicleMonitoring = startVehicleMonitoring
+getgenv().stopVehicleMonitoring = stopVehicleMonitoring
+getgenv().startVehicleFly = startVehicleFly
+getgenv().stopVehicleFly = stopVehicleFly
+getgenv().getCurrentVehicle = function() return currentVehicle end
