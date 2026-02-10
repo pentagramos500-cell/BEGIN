@@ -1,0 +1,17 @@
+
+-- Typical AK-47 ShootEvent Remote's code, taken from Remotespy
+local args = {
+    [1] = {
+        [1] = {
+            [1] = Vector3.new(-944.4812622070312, 95.6286392211914, 2042.3524169921875),
+            [2] = Vector3.new(-943.94189453125, 96.37364196777344, 2032.712158203125),
+            [3] = workspace.Warehouse1:GetChildren()[13]
+        }
+    }
+}
+
+game:GetService("ReplicatedStorage").GunRemotes.ShootEvent:FireServer(unpack(args))
+
+-- Typical FuncReload from RemoteSpy
+
+game:GetService("ReplicatedStorage").GunRemotes.FuncReload:InvokeServer()
